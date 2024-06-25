@@ -1,0 +1,1 @@
+["From built-in concurrency primitives to large scale distributed computing"](https://github.com/coobas/europython-24) by [Jakub Urban](https://github.com/coobas/) is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/?ref=chooser-v1).
