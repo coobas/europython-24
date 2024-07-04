@@ -252,16 +252,19 @@ At some point, your calculation may not fit into a single machine.
 - The calculation is too heavy.
 - We need too many repetitions, e.g. in a grid search.
 
-Sometimes, resons for distributed computing are not resource-related.
+Sometimes, reasons for distributed computing are not resource-related.
 - Security or compliance can constrain local or ad-hoc processing.
 - You simply need to turn off your computer.
 
 ## Resource-driven scaling out
 
+Two main drivers for scaling out:
 - Memory: "My data do not fit into my (computer's) memory."
   - Symptoms: OOM (Out Of Memory) kills, swapping leading to system freeze.
 - Processing power: "My calculation takes too long."
   - Symptoms: CPU, GPU, other PU's at 100%, calculation time too long.
+
+## Checklist before scaling out
 
 Before spinning up a cluster, there are possibilities:
 - Profile and possibly optimise your code.
@@ -269,3 +272,175 @@ Before spinning up a cluster, there are possibilities:
 - Large data can be processed in chunks.
   - This is where executors can help.
   - Even the large scale frameworks like Dask or Ray can help when running on a single machine.
+
+## Scaling out with Dask (Distributed)
+
+`Dask` may be better known for its `DataFrame` pandas-like API. However,
+
+> `Dask` is a Python library for parallel and distributed computing.
+> - Easy to use and set up (it’s just a Python library)
+> - Powerful at providing scale, and unlocking complex algorithms
+> - and Fun 🎉
+
+[https://docs.dask.org]
+
+## Scaling out with Dask (Distributed)
+
+- `Dask` supports a `concurrent.futures`-like interface.
+```python
+from dask.distributed import Client
+dask_client = Client()
+```
+
+## Dask - concurrent.futures-like interface
+
+```python
+executor = dask_client.get_executor()
+```
+- `dask.Client` API is (mostly) compatible with `concurrent.futures.Executor` already.
+- `distributed.client.Future` is *not* compatible with `concurrent.futures.Future`.
+  - This will raise an exception:
+```python
+dask_future = client.submit(do_some_math, 10)
+concurrent.futures.wait([dask_future])
+```
+- Need to decide whether to work with `Dask`,
+  - and profit from its specific features,
+- or with `concurrent.futures` and `Dask` as a backend,
+  - and profit from the `concurrent.futures` full compatibility.
+
+## Ray - concurrent.futures-like interface
+
+- Ray `ObjectRef`'s can return `concurrent.futures.Future` object:
+```python
+ref = ray.remote(do_some_math).remote(5)
+future = ref.future()
+```
+-  which can be wrapped as `asyncio.Future` object:
+```python
+async_future = asyncio.wrap_future(ref.future())
+```
+- However, Ray's `ObjectRef` can be directly `await`ed:
+```python
+result = await ref
+```
+
+## What just happened = Dask Cluster
+
+- By `Client` instantiation, a Dask cluster is, *maybe*, started.
+- Dask cluster consists of
+  - Scheduler
+  - Workers
+- A `LocalCluster` type cluster is started if no default cluster if configured.
+  - Can use processes (default) or threads as workers.
+  - Dashboard becomes available (default at `http://localhost:8787`).
+- Other types of clusters
+  - Kubernetes: Dask Operator is most powerful
+  - Cloud: Coiled (managed SaaS), Cloud Provider using VMs, Yarn
+  - High Performance Computing job queues (SLURM, PBS, etc.)
+  - or custom, starting schedulers and workers manually, e.g. via ssh
+
+![dask-cluster-manager](dask-cluster-manager.png)
+
+## Challenges
+- Consistent software environments
+- Observability, logging
+- Authentication and authorisation
+- Costs monitoring and control
+
+## Motivation and advantages of Distributed
+
+- Peer-to-peer data sharing: Workers communicate with each other to share data. This removes central bottlenecks for data transfer.
+- Complex Scheduling: Supports complex workflows (not just map/filter/reduce) which are necessary for sophisticated algorithms used in nd-arrays, machine learning, image processing, and statistics.
+- Data Locality: Scheduling algorithms cleverly execute computations where data lives. This minimizes network traffic and improves efficiency.
+
+## Ray - remote tasks
+
+```python
+import ray
+ray.init()
+
+@ray.remote
+def f(x):
+    return x * x
+
+futures = [f.remote(i) for i in range(4)]
+results = ray.get(futures)
+```
+
+## Data management and communication
+
+- With `concurrent.futures`, data is pickled and sent to workers.
+  - This means data has to pass from / to the orchestrator.
+  - ... unless you use a distributed storage explicitly.
+- Ray uses a shared-memory object store called Plasma.
+- Dask primarily stores data in memory and schedules tasks close to data.
+  - Dask can also use distributed storage like HDFS, S3, or GCS.
+
+## Explicitly sending data to workers
+
+- Dask:
+```python
+future = client.scatter(data)
+```
+  - or for a Dask collection:
+```python
+dask_array = dask.array.from_array(np.random.random((1000, 1000)))
+persisted_array = client.persist(dask_array)
+```
+  - `persisted_array` is a Dask collection, not a `Future`.
+- Ray:
+```python
+data_id = ray.put(data)
+```
+
+- The data references can be used directly in tasks:
+```python
+future = client.submit(np.mean, data_id)  # Dask
+result_id = ray.remote(lambda x: np.mean(x)).remote(data_id)  # Ray
+```
+
+## A non-obvious random numbers stale state
+
+```python
+list(executor.map(np.random.randint, 8*[100]))
+[51, 51, 51, 51, 51, 51, 51, 51]
+```
+Surprisingly, random generator state is shared and not mutated.
+
+💡 `randint` is not a (pure) function, it's a `RandomState` instance's method.
+
+Works with Ray though "out of the box"
+```python
+def randint(n):
+    return np.random.randint(n)
+
+ray.get([ray.remote(randint).remote(100) for i in range(10)])
+[34, 62, 4, 7, 26, 69, 43, 15, 60, 46]
+```
+
+## Critical challenges in distributed computing
+
+- Communication
+  - Plasma object store in Ray
+  - Peer to peer data sharing in Dask
+  - Smart scheduling minimising data transfer
+- Scheduling and synchronisation
+
+## Task dependencies - call graphs
+
+Imagine a simple case of two dependent tasks:
+```python
+data = load_data()
+result = process_data(data)
+```
+This would not work with a `concurrent.futures` executor:
+```
+data = executor.submit(load_data)
+result = executor.submit(process_data, data)
+```
+This raises a `TypeError` as `process_data` expects data, not a `Future`, which cannot be pickled.
+
+This works using Dask or Ray though.
+
+## Nested tasks - avoiding locking
