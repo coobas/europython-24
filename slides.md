@@ -1,12 +1,16 @@
 # Jakub Urban: From built-in concurrency primitives to large scale distributed computing
 
-## Abstract
+
+
+# Abstract
 
 This talk is specifically designed for Python developers and data practitioners who wish to deepen their skills in asynchronous code execution, from single CPU applications to complex distributed systems with thousands of cores. We'll provide a detailed exploration and explanation of Python's asynchronous execution models and concurrency primitives, focusing on `Future` and `Executor` interfaces within the `concurrent.futures` module, and the event-driven architecture of `asyncio`. Special attention will be given to the processing of large datasets, a common challenge in data science and engineering.
 
 We will start with the fundamental concepts and then explore how they apply to large scale, distributed execution frameworks like Dask or Ray. On step-by-step examples, we aim to demonstrate simple function executions and map-reduce operations. We will illustrate efficient collaboration between different concurrency models. The session will cover the transition to large-scale, distributed execution frameworks, offering practical guidelines for scaling your computations effectively and addressing common hurdles like data serialization in distributed environments.
 
 Attendees will leave with a solid understanding of asynchronous code execution underpinnings. This talk will empower you to make informed practical decisions about applying concurrency in your data processing workflows. You will be able to seamlessly integrate new libraries or frameworks into your projects, ensuring optimal development lifecycle, performance and scalability.
+
+
 
 ## Concurrency lets you wait efficiently
 
@@ -20,7 +24,8 @@ Attendees will leave with a solid understanding of asynchronous code execution u
   - Sometimes people even did not know what they were waiting for.
   - Would be great to wait in multiple queues at once.
 
-## Concurrency lets you organise work efficiently
+
+# Concurrency lets you organise work efficiently
 
 - You can respond to (accept) multiple requests even if there are still tasks to be done.
   - Requests can come, for example, from a queue or an API.
@@ -28,7 +33,9 @@ Attendees will leave with a solid understanding of asynchronous code execution u
   - ... or just switch between tasks efficiently.
   - ... although context switching is not free.
 
-## Parallelism lets you *execute* multiple things at once
+
+
+# Parallelism lets you *execute* multiple things at once
 
 - Parallelism is about executing multiple things simultaneously.
 - Concurrency does not imply parallelism.
@@ -38,14 +45,18 @@ Attendees will leave with a solid understanding of asynchronous code execution u
   - Multi-core machines with shared memory (MIMD).
   - Distributed systems: clusters, clouds (MIMD).
 
-## Where do you need concurrency?
+
+
+# Where do you need concurrency?
 - Web servers
 - High-performance computing (HPC)
 - Data engineering
 - Machine learning
 
 
-## Python defines built-in concurrency primitives
+
+
+# Python defines built-in concurrency primitives
 
 - `concurrent.futures`
   - > ... provides a high-level interface for asynchronously executing callables.
@@ -57,7 +68,9 @@ Attendees will leave with a solid understanding of asynchronous code execution u
   - `asyncio`: cooperative multitasking.
   - `contextvars`: context-local state.
 
-## `from concurrent.futures import Executor`
+
+
+# `from concurrent.futures import Executor`
 > Executor is an abstract class that provides methods to execute calls asynchronously.
 - This is indeed abstract 😅
 - What does one need in particular?
@@ -66,7 +79,9 @@ Attendees will leave with a solid understanding of asynchronous code execution u
   3. Collect results.
   4. Shutdown the executor.
 
-## 1. Create an executor
+
+
+# 1. Create an executor
 
 ```python
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
@@ -77,7 +92,9 @@ thread_executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 process_executor = ProcessPoolExecutor(max_workers=MAX_WORKERS)
 ```
 
-## 2. Submit tasks to the executor
+
+
+# 2. Submit tasks to the executor
 
 ```python
 def do_some_math(x: float) -> float:
@@ -93,7 +110,9 @@ result = thread_executor.submit(do_some_math, 5)
 results = thread_executor.map(do_some_math, range(10))
 ```
 
-## 3a. Collect result: single `Future`
+
+
+# 3a. Collect result: single `Future`
 
 - The output of `submit` is a `concurrent.futures.Future` object:
 
@@ -109,7 +128,9 @@ print(result)
   - `done()`: Returns `True` if the call was successfully cancelled or finished running.
   - `cancel()`: Attempts to cancel the computation.
 
-## 3b. Collect multiple results
+
+
+# 3b. Collect multiple results
 
 - The output of `map` is a generator object:
 
@@ -120,7 +141,9 @@ print(results)
 
 - This generator yields results as they become available.
 
-## 3c. Collect multiple results with `as_completed`
+
+
+# 3c. Collect multiple results with `as_completed`
 
 - We can submit multiple tasks without using executor's `map` method.
   - This will yield multiple `Future` objects.
@@ -143,7 +166,9 @@ for future in as_completed(futures):
     print(future.result())
 ```
 
-## 3d. Collect multiple results with `wait`
+
+
+# 3d. Collect multiple results with `wait`
 
 - `wait` gives us more flexibility and control over the futures while waiting.
   - We can use waiting timeout.
@@ -155,7 +180,9 @@ done, not_done = wait(futures, timeout=1, return_when=FIRST_COMPLETED)
 
 - `done` and `not_done` are sets of futures.
 
-## 4. Shutdown the executor
+
+
+# 4. Shutdown the executor
 
 - Executors should be shutdown to release resources.
   - This may be done automatically when the executor is garbage collected.
@@ -175,7 +202,9 @@ with ThreadPoolExecutor(max_workers=4) as executor:
     result = executor.submit(do_some_math, 5)
 ```
 
-## `ThreadPoolExecutor` limitation: Global Interpreter Lock (GIL)
+
+
+# `ThreadPoolExecutor` limitation: Global Interpreter Lock (GIL)
 
 - Global Interpreter Lock (GIL) is probably the most (in)famous limitation of CPython.
 - GIL prevents multiple threads from executing Python code simultaneously (in parallel).
@@ -184,7 +213,9 @@ with ThreadPoolExecutor(max_workers=4) as executor:
   - C extensions (NumPy, Pandas, TensorFlow).
 - ... thus enabling threads to run in parallel.
 
-## `ProcessPoolExecutor` limitation: Serialization
+
+
+# `ProcessPoolExecutor` limitation: Serialization
 
 - Submitted tasks, i.e callables and data, are sent as pickles to the worker processes.
 - Not all objects can be pickled.
@@ -197,7 +228,9 @@ process_executor.submit(lambda x: x * x, 5).result()
 PicklingError: Can't pickle <function <lambda> ...
 ```
 
-## Resolving serialization issues
+
+
+# Resolving serialization issues
 
 - Libraries like `cloudpickle` or `dill` resolve a lot of these limitations.
 - Our first non-builtin executor: [`joblib/loky`](https://github.com/joblib/loky)
@@ -207,14 +240,20 @@ PicklingError: Can't pickle <function <lambda> ...
   - Transparent cloudpickle integration
 
 ```python
+
+
 # Create an executor with 4 worker processes, that will
+
+
 # automatically shutdown after idling for 2s
 executor = loky.get_reusable_executor(max_workers=4, timeout=2)
 ```
 
 - `loky` is a straightforward replacement for `ProcessPoolExecutor`.
 
-## `concurrent.futures` within `asyncio`
+
+
+# `concurrent.futures` within `asyncio`
 
 - `asyncio` enables concurrent code using the `async`/`await` syntax.
 - An internal event loop manages the execution of coroutines.
@@ -235,7 +274,9 @@ asyncio_future = loop.run_in_executor(executor, do_some_math, 5)
 result = await asyncio_future
 ```
 
-## Practical data processing usecases with `concurrent.futures`
+
+
+# Practical data processing usecases with `concurrent.futures`
 
 - Quick parallel batch processing, e.g.
   - Run Pandas pipeline on multiple files.
@@ -245,7 +286,9 @@ result = await asyncio_future
   - Especially useful for `asyncio` applications.
   - Must be careful with resource utilisation, in particular RAM.
 
-## Scaling out: Distributed computing
+
+
+# Scaling out: Distributed computing
 
 At some point, your calculation may not fit into a single machine.
 - Need to process huge datasets.
@@ -256,7 +299,9 @@ Sometimes, reasons for distributed computing are not resource-related.
 - Security or compliance can constrain local or ad-hoc processing.
 - You simply need to turn off your computer.
 
-## Resource-driven scaling out
+
+
+# Resource-driven scaling out
 
 Two main drivers for scaling out:
 - Memory: "My data do not fit into my (computer's) memory."
@@ -264,7 +309,9 @@ Two main drivers for scaling out:
 - Processing power: "My calculation takes too long."
   - Symptoms: CPU, GPU, other PU's at 100%, calculation time too long.
 
-## Checklist before scaling out
+
+
+# Checklist before scaling out
 
 Before spinning up a cluster, there are possibilities:
 - Profile and possibly optimise your code.
@@ -273,7 +320,9 @@ Before spinning up a cluster, there are possibilities:
   - This is where executors can help.
   - Even the large scale frameworks like Dask or Ray can help when running on a single machine.
 
-## Scaling out with Dask (Distributed)
+
+
+# Scaling out with Dask (Distributed)
 
 `Dask` may be better known for its `DataFrame` pandas-like API. However,
 
@@ -284,7 +333,9 @@ Before spinning up a cluster, there are possibilities:
 
 [https://docs.dask.org]
 
-## Scaling out with Dask (Distributed)
+
+
+# Scaling out with Dask (Distributed)
 
 - `Dask` supports a `concurrent.futures`-like interface.
 ```python
@@ -292,7 +343,9 @@ from dask.distributed import Client
 dask_client = Client()
 ```
 
-## Dask - concurrent.futures-like interface
+
+
+# Dask - concurrent.futures-like interface
 
 ```python
 executor = dask_client.get_executor()
@@ -309,7 +362,9 @@ concurrent.futures.wait([dask_future])
 - or with `concurrent.futures` and `Dask` as a backend,
   - and profit from the `concurrent.futures` full compatibility.
 
-## Ray - concurrent.futures-like interface
+
+
+# Ray - concurrent.futures-like interface
 
 - Ray `ObjectRef`'s can return `concurrent.futures.Future` object:
 ```python
@@ -325,7 +380,9 @@ async_future = asyncio.wrap_future(ref.future())
 result = await ref
 ```
 
-## What just happened = Dask Cluster
+
+
+# What just happened = Dask Cluster
 
 - By `Client` instantiation, a Dask cluster is, *maybe*, started.
 - Dask cluster consists of
@@ -342,19 +399,25 @@ result = await ref
 
 ![dask-cluster-manager](dask-cluster-manager.png)
 
-## Challenges
+
+
+# Challenges
 - Consistent software environments
 - Observability, logging
 - Authentication and authorisation
 - Costs monitoring and control
 
-## Motivation and advantages of Distributed
+
+
+# Motivation and advantages of Distributed
 
 - Peer-to-peer data sharing: Workers communicate with each other to share data. This removes central bottlenecks for data transfer.
 - Complex Scheduling: Supports complex workflows (not just map/filter/reduce) which are necessary for sophisticated algorithms used in nd-arrays, machine learning, image processing, and statistics.
 - Data Locality: Scheduling algorithms cleverly execute computations where data lives. This minimizes network traffic and improves efficiency.
 
-## Ray - remote tasks
+
+
+# Ray - remote tasks
 
 ```python
 import ray
@@ -368,7 +431,9 @@ futures = [f.remote(i) for i in range(4)]
 results = ray.get(futures)
 ```
 
-## Data management and communication
+
+
+# Data management and communication
 
 - With `concurrent.futures`, data is pickled and sent to workers.
   - This means data has to pass from / to the orchestrator.
@@ -377,7 +442,9 @@ results = ray.get(futures)
 - Dask primarily stores data in memory and schedules tasks close to data.
   - Dask can also use distributed storage like HDFS, S3, or GCS.
 
-## Explicitly sending data to workers
+
+
+# Explicitly sending data to workers
 
 - Dask:
 ```python
@@ -400,7 +467,9 @@ future = client.submit(np.mean, data_id)  # Dask
 result_id = ray.remote(lambda x: np.mean(x)).remote(data_id)  # Ray
 ```
 
-## A non-obvious random numbers stale state
+
+
+# A non-obvious random numbers stale state
 
 ```python
 list(executor.map(np.random.randint, 8*[100]))
@@ -419,7 +488,9 @@ ray.get([ray.remote(randint).remote(100) for i in range(10)])
 [34, 62, 4, 7, 26, 69, 43, 15, 60, 46]
 ```
 
-## Resource requests for task execution
+
+
+# Resource requests for task execution
 
 - tasks can request resources, e.g. CPU, GPU, memory
 
@@ -441,11 +512,15 @@ for i in range(NUM_FILES):
 ray.get(result_refs)
 ```
 
-## Fault tolerance
+
+
+# Fault tolerance
 
 
 
-## Critical challenges in distributed computing
+
+
+# Critical challenges in distributed computing
 
 - Communication
   - Plasma object store in Ray
@@ -453,7 +528,9 @@ ray.get(result_refs)
   - Smart scheduling minimising data transfer
 - Scheduling and synchronisation
 
-## Task dependencies - call graphs
+
+
+# Task dependencies - call graphs
 
 Imagine a simple case of two dependent tasks:
 ```python
@@ -469,4 +546,6 @@ This raises a `TypeError` as `process_data` expects data, not a `Future`, which 
 
 This works using Dask or Ray though.
 
-## Nested tasks - avoiding locking
+
+
+# Nested tasks - avoiding locking
