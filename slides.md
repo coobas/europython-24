@@ -419,6 +419,32 @@ ray.get([ray.remote(randint).remote(100) for i in range(10)])
 [34, 62, 4, 7, 26, 69, 43, 15, 60, 46]
 ```
 
+## Resource requests for task execution
+
+- tasks can request resources, e.g. CPU, GPU, memory
+
+> By default, Ray does not take into account the potential memory usage of a task or actor when scheduling. This is simply because it cannot estimate ahead of time how much memory is required. However, if you know how much memory a task or actor requires, you can specify it in the resource requirements of its ray.remote decorator to enable memory-aware scheduling:
+
+Important
+
+Specifying a memory requirement does NOT impose any limits on memory usage. The requirements are used for admission control during scheduling only (similar to how CPU scheduling works in Ray). It is up to the task itself to not use more memory than it requested.
+
+```python
+result_refs = []
+for i in range(NUM_FILES):
+    # Now each task will use 2G memory resource
+    # and the number of concurrently running tasks is limited to 8.
+    # In this case, setting num_cpus to 2 has the same effect.
+    result_refs.append(
+        process.options(memory=2 * 1024 * 1024 * 1024).remote(f"{i}.csv")
+    )
+ray.get(result_refs)
+```
+
+## Fault tolerance
+
+
+
 ## Critical challenges in distributed computing
 
 - Communication
