@@ -22,7 +22,14 @@ layout: cover
 ---
 
 # From built-in concurrency primitives to large scale distributed computing
-## Jakub Urban
+## Jakub Urban *@ Flyr for Hospitality*
+
+<!--
+Introduction
+-->
+
+---
+layout: two-cols
 ---
 
 # Concurrency lets you wait efficiently
@@ -31,11 +38,17 @@ layout: cover
   - For example, you can wait for multiple calculations or API responds.
   - It's like a superpower of **waiting** in multiple queues at once.
 - You do not need to care how the work to clear a queue is done.
-![Communist Czech queues](communist_queues.png)
+
+::right::
+
+::v-click
+
+![Communist Czech queues](/communist_queues.png)
 ([Foto: Archiv Ladislava Růžičky](https://magazin.aktualne.cz/nemame-zeptejte-se-po-novem-roce-nakupy-za-socialismu-v-cesk/r~49f5bc5a5eba11eebe29ac1f6b220ee8/))
-- Would be great for (Czech) communist queues.
+- Would be great for (Czech socialist) queues
   - Sometimes people even did not know what they were waiting for.
-  - Would be great to wait in multiple queues at once.
+  - Wait in multiple queues at once would help.
+::
 
 ---
 
@@ -55,17 +68,26 @@ layout: cover
 - Concurrency does not imply parallelism.
   - Although parallelism is typically desired in concurrent systems.
 - Examples of parallel calculation:
-  - GPU's or vectorized CPU operations (SIMD).
-  - Multi-core machines with shared memory (MIMD).
+  - GPU's or vectorized CPU operations (SIMD - single instruction multiple data).
+  - Multi-core machines with shared memory (MIMD - multiple instructions multiple data).
   - Distributed systems: clusters, clouds (MIMD).
 
 ---
 
-# Where do you need concurrency?
+# Where do you need concurrency and parallellism?
 - Web servers
 - High-performance computing (HPC)
 - Data engineering
 - Machine learning
+- ... and many more
+
+---
+
+# Data processing cares about both concurrency and parallelism
+
+- In data processing, we often care about both concurrency and parallelism.
+  - We need processes to be responsive → concurrency.
+  - We need to execute processing tasks fast and efficiently → parallelism.
 
 
 ---
@@ -132,12 +154,15 @@ results = thread_executor.map(do_some_math, range(10))
 
 ```python
 print(result)
+```
+
+```
 <Future at 0x122921490 state=finished returned int>
 ```
 
 - `Future` is a placeholder for the result of a computation that may not be completed yet.
 - `Future` encapsulates the asynchronous execution.
-- Most important methods are:
+- Most important `Future` methods are:
   - `result(timeout=None)`: Waits for the computation to complete and returns the result.
   - `done()`: Returns `True` if the call was successfully cancelled or finished running.
   - `cancel()`: Attempts to cancel the computation.
@@ -150,10 +175,27 @@ print(result)
 
 ```python
 print(results)
+```
+
+```
 <generator object Executor.map.<locals>.result_iterator at 0x122a1f4d0>
 ```
 
-- This generator yields results as they become available.
+- This generator yields results as they become available, *in the order* they were submitted.
+- One would typically iterate over the generator:
+
+```python
+for result in results:
+    ...
+```
+
+- or collect all results into a list:
+
+```python
+completed_results = list(results)
+```
+
+- Slow tasks may block the iteration (although do not block the execution in the workers).
 
 ---
 
@@ -165,13 +207,14 @@ print(results)
 ```python
 futures = [executor.submit(do_some_math, x) for x in range(10)]
 ```
+
 or using built-in `map`:
 ```python
-from functools import partial
-futures = map(partial(executor.submit, do_some_math), range(10))
+futures = map(functools.partial(executor.submit, do_some_math), range(10))
 ```
 
-- We can use `as_completed` now iterate over futures as they complete:
+- `as_completed` iterates over a collection of futures as they complete:
+  - Can specify waiting timeout.
 
 ```python
 from concurrent.futures import as_completed
@@ -186,6 +229,7 @@ for future in as_completed(futures):
 
 - `wait` gives us more flexibility and control over the futures while waiting.
   - We can use waiting timeout.
+  - Can wait for first completed, all completed, or first exception.
   - We can, e.g., cancel futures that have not started running.
 
 ```python
@@ -218,6 +262,21 @@ with ThreadPoolExecutor(max_workers=4) as executor:
 
 ---
 
+# Gotcha example: A non-obvious random numbers stale state
+
+```python
+list(executor.map(np.random.randint, 8*[100]))
+```
+
+```
+[51, 51, 51, 51, 51, 51, 51, 51]
+```
+
+- Surprisingly, random generator state is shared and not mutated.
+- 💡 `randint` is not a (pure) function, it's a `RandomState` instance's method.
+
+---
+
 # `ThreadPoolExecutor` limitation: Global Interpreter Lock (GIL)
 
 - Global Interpreter Lock (GIL) is probably the most (in)famous limitation of CPython.
@@ -226,6 +285,7 @@ with ThreadPoolExecutor(max_workers=4) as executor:
   - I/O operations (file operations, network requests).
   - C extensions (NumPy, Pandas, TensorFlow).
 - ... thus enabling threads to run in parallel.
+
 
 ---
 
@@ -248,8 +308,8 @@ PicklingError: Can't pickle <function <lambda> ...
 # Resolving serialization issues
 
 - Libraries like `cloudpickle` or `dill` resolve a lot of these limitations.
-- Our first non-builtin executor: [`joblib/loky`](https://github.com/joblib/loky)
-> The aim of this project is to provide a robust, cross-platform and cross-version implementation of the `ProcessPoolExecutor` class of `concurrent.futures`.
+- Meet our first non-builtin executor: [`joblib/loky`](https://github.com/joblib/loky)
+  - > The aim of this project is to provide a robust, cross-platform and cross-version implementation of the `ProcessPoolExecutor` class of `concurrent.futures`.
   - Consistent and robust spawn behaviour
   - Reusable executor
   - Transparent cloudpickle integration
@@ -260,61 +320,58 @@ PicklingError: Can't pickle <function <lambda> ...
 executor = loky.get_reusable_executor(max_workers=4, timeout=2)
 ```
 
-- `loky` is a straightforward replacement for `ProcessPoolExecutor`.
+- tldr; `loky` is a straightforward replacement for `ProcessPoolExecutor`.
 
 ---
 
 # `concurrent.futures` within `asyncio`
 
-- `asyncio` enables concurrent code using the `async`/`await` syntax.
-- An internal event loop manages the execution of coroutines.
-- This is a cooperative multitasking model.
+- `asyncio` cooperative multitasking enables concurrent code using the `async`/`await` syntax.
+  - An internal event loop manages the execution of coroutines.
 - `asyncio.Future` is similar to `concurrent.futures.Future`.
   - and can be created from `concurrent.futures.Future`:
-```python
-concurrent_future = executor.submit(do_some_math, 5)
-asyncio_future = asyncio.wrap_future(concurrent_future)
-```
-- This can also be done via `loop.run_in_executor`.
-```python
-loop = asyncio.get_event_loop()
-asyncio_future = loop.run_in_executor(executor, do_some_math, 5)
-```
-- The `asyncio` `Future` can be awaited as usual:
-```python
-result = await asyncio_future
-```
+  ```python
+  concurrent_future = executor.submit(do_some_math, 5)
+  asyncio_future = asyncio.wrap_future(concurrent_future)
+  await asyncio_future
+  ```
+  - ... or via `loop.run_in_executor`:
+  ```python
+  loop = asyncio.get_event_loop()
+  asyncio_future = loop.run_in_executor(executor, do_some_math, 5)
+  ```
+
+- This basically *removes the usual limitation of `asyncio` not supporting CPU-bound tasks*.
 
 ---
 
-# Practical data processing usecases with `concurrent.futures`
+# Practical data processing usecases with `concurrent.futures` examples
 
-- Quick parallel batch processing, e.g.
+- Quick parallel batch processing, e.g.:
   - Run Pandas pipeline on multiple files.
   - Grid search hyperparameters.
 - Non-blocking data processing in a web server or a streaming processor.
   - Even a single-worker executor can enable non-blocking processing.
   - Especially useful for `asyncio` applications.
-  - Must be careful with resource utilisation, in particular RAM.
+- Must be careful with resource utilisation, in particular RAM.
 
 ---
 
 # Scaling out: Distributed computing
 
-At some point, your calculation may not fit into a single machine.
-- Need to process huge datasets.
-- The calculation is too heavy.
-- We need too many repetitions, e.g. in a grid search.
+- At some point, your calculation may not fit into a single machine.
+  - Need to process huge datasets.
+  - The calculation is too heavy.
+  - We need too many repetitions, e.g. in a grid search.
 
-Sometimes, reasons for distributed computing are not resource-related.
-- Security or compliance can constrain local or ad-hoc processing.
-- You simply need to turn off your computer.
+- Sometimes, reasons for distributed computing are not resource-related.
+  - Security or compliance can constrain local or ad-hoc processing.
+  - You simply need to turn off your computer.
 
 ---
 
-# Resource-driven scaling out
-
-Two main drivers for scaling out:
+# Resource drivers for scaling out: RAM and CPU
+- Two main resource-type drivers exist for scaling out:
 - Memory: "My data do not fit into my (computer's) memory."
   - Symptoms: OOM (Out Of Memory) kills, swapping leading to system freeze.
 - Processing power: "My calculation takes too long."
@@ -324,18 +381,20 @@ Two main drivers for scaling out:
 
 # Checklist before scaling out
 
-Before spinning up a cluster, there are possibilities:
+- Before spinning up a cluster (and spending 💰💰💰), there are possibilities:
 - Profile and possibly optimise your code.
+  - Remember the 80:20 Pareto rule.
+  - Save either RAM or CPU.
 - Data can (sometimes) be memory-mapped.
 - Large data can be processed in chunks.
   - This is where executors can help.
-  - Even the large scale frameworks like Dask or Ray can help when running on a single machine.
+- Large scale frameworks like Dask or Ray can help even when running on a single machine.
 
 ---
 
 # Scaling out with Dask (Distributed)
 
-`Dask` may be better known for its `DataFrame` pandas-like API. However,
+- `Dask` may be better known for its `DataFrame` pandas-like API. However,
 
 > `Dask` is a Python library for parallel and distributed computing.
 > - Easy to use and set up (it’s just a Python library)
@@ -344,91 +403,65 @@ Before spinning up a cluster, there are possibilities:
 
 [https://docs.dask.org]
 
+- I.e., Dask is a *generic* parallel computing framework.
+  - We can submit tasks to a Dask cluster using `concurrent.futures`-like API.
+  - Dask can operate and scale efficiently from a single machine to a (big) cluster.
+
 ---
 
-# Scaling out with Dask (Distributed)
+# `Dask` Futures API is like `concurrent.futures`
 
-- `Dask` supports a `concurrent.futures`-like interface.
+- `Dask` supports a `concurrent.futures`-like interface in its [Futures API](https://docs.dask.org/en/stable/futures.html#api).
+- This is the foundation for other APIs like Dask arrays and dataframes.
 ```python
-from dask.distributed import Client
+from dask.distributed import Client, as_completed, wait
 dask_client = Client()
 ```
 
+- `dask.Client` API is similar to `concurrent.futures.Executor`.
+```python
+dask_future = dask_client.submit(do_some_math, 10)
+```
+
+- There are substantial differences, e.g. `map` yields a list of futures, not a generator.
+  - Hence, `as_completed` or `wait` should be used to iterate over futures as they complete.
+  - This is probably more useful than `concurrent.futures`'s `map`.
+
+
 ---
 
-# Dask - concurrent.futures-like interface
+# Dask provides `concurrent.futures` compatibility
 
+- `distributed.client.Future` is *not* compatible with `concurrent.futures.Future`.
+  - This will raise an exception:
+  ```python
+  concurrent.futures.wait([dask_future])
+  ```
+
+- A fully compatible `concurrent.futures` executor can be obtained from `Dask`:
 ```python
 executor = dask_client.get_executor()
 ```
-- `dask.Client` API is (mostly) compatible with `concurrent.futures.Executor` already.
-- `distributed.client.Future` is *not* compatible with `concurrent.futures.Future`.
-  - This will raise an exception:
-```python
-dask_future = client.submit(do_some_math, 10)
-concurrent.futures.wait([dask_future])
-```
+
+::v-click
 - Need to decide whether to work with `Dask`,
   - and profit from its specific features,
 - or with `concurrent.futures` and `Dask` as a backend,
-  - and profit from the `concurrent.futures` full compatibility.
+  - and profit from the `concurrent.futures` full compatibility, e.g. within `asyncio`.
+
+::
 
 ---
 
-# Ray - concurrent.futures-like interface
+# Scaling out with Ray
 
-- Ray `ObjectRef`'s can return `concurrent.futures.Future` object:
-```python
-ref = ray.remote(do_some_math).remote(5)
-future = ref.future()
-```
--  which can be wrapped as `asyncio.Future` object:
-```python
-async_future = asyncio.wrap_future(ref.future())
-```
-- However, Ray's `ObjectRef` can be directly `await`ed:
-```python
-result = await ref
-```
+> [Ray Overview](https://docs.ray.io/en/latest/ray-overview/index.html)
+> - Ray is an open-source unified framework for scaling AI and Python applications like machine learning.
+> - It provides the compute layer for parallel processing so that you don’t need to be a distributed systems expert.
+> - Ray minimizes the complexity of running your distributed individual and end-to-end machine learning workflows ...
 
----
-
-# What just happened = Dask Cluster
-
-- By `Client` instantiation, a Dask cluster is, *maybe*, started.
-- Dask cluster consists of
-  - Scheduler
-  - Workers
-- A `LocalCluster` type cluster is started if no default cluster if configured.
-  - Can use processes (default) or threads as workers.
-  - Dashboard becomes available (default at `http://localhost:8787`).
-- Other types of clusters
-  - Kubernetes: Dask Operator is most powerful
-  - Cloud: Coiled (managed SaaS), Cloud Provider using VMs, Yarn
-  - High Performance Computing job queues (SLURM, PBS, etc.)
-  - or custom, starting schedulers and workers manually, e.g. via ssh
-
-![dask-cluster-manager](dask-cluster-manager.png)
-
----
-
-# Challenges
-- Consistent software environments
-- Observability, logging
-- Authentication and authorisation
-- Costs monitoring and control
-
----
-
-# Motivation and advantages of Distributed
-
-- Peer-to-peer data sharing: Workers communicate with each other to share data. This removes central bottlenecks for data transfer.
-- Complex Scheduling: Supports complex workflows (not just map/filter/reduce) which are necessary for sophisticated algorithms used in nd-arrays, machine learning, image processing, and statistics.
-- Data Locality: Scheduling algorithms cleverly execute computations where data lives. This minimizes network traffic and improves efficiency.
-
----
-
-# Ray - remote tasks
+- Ray focuses on machine learning and AI workloads.
+- [Ray Core](https://docs.ray.io/en/latest/ray-core/walkthrough.html) provides core primitives for distributed computing, similarly to Dask Future API.
 
 ```python
 import ray
@@ -438,9 +471,89 @@ ray.init()
 def f(x):
     return x * x
 
-futures = [f.remote(i) for i in range(4)]
-results = ray.get(futures)
+references = [f.remote(i) for i in range(4)]
+results = ray.get(references)
 ```
+
+---
+
+# Ray `concurrent.futures` interface
+
+- Ray `ObjectRef`'s can return `concurrent.futures.Future` object:
+```python
+ref = ray.remote(do_some_math).remote(5)
+future = ref.future()
+```
+
+- A [pull request](https://github.com/ray-project/ray/pull/44922) is open to add `RayExecutor` as a drop-in replacement for `concurrent.futures.Executor`.
+
+
+---
+
+# Ray and Dask within `asyncio`
+
+- Very conveniently, Ray's `ObjectRef` can be directly `await`ed:
+```python
+reference = ray.remote(do_some_math).remote(5)
+result = await reference
+```
+
+- Alternatively, `wrap_future` or `ensure_future` can be used:
+```python
+async_task = asyncio.ensure_future(ref)
+async_future = asyncio.wrap_future(ref.future())
+```
+
+- Dask can operate in `asyncio` mode by using the `asynchronous=True` parameter.
+```python
+client = await Client(asynchronous=True)
+future = client.submit(do_some_math, 5)
+result = await future
+```
+
+---
+layout: two-cols
+---
+
+# Dask Cluster architecture
+
+- Dask cluster consists of
+  - Scheduler
+  - Workers
+- `Client(...)` either starts a local cluster or connects to an existing one.
+- Dashboard is available (default at [http://localhost:8787]).
+- Available resource managers enable powerful deployment and scaling options.
+  - Kubernetes: Dask Operator is most powerful
+  - Cloud: e.g. Coiled (managed SaaS)
+  - High Performance Computing job queues
+  - manual launching, e.g. via ssh
+
+::right::
+
+![dask-cluster-manager](dask-cluster-manager.png)
+
+
+---
+layout: two-cols
+---
+
+# Ray cluster architecture
+
+- Ray top level architecture is similar to Dask.
+  - Head node acts as global scheduler.
+  - Raylets help with node processes management.
+- Dashboard available at [http://localhost:8265].
+- Powerful deployment and scaling options:
+  - Kubernetes (KubeRay operator)
+  - Cloud: AWS or GCP via `ray up` command with a simple config file
+  - SaaS: Anyscale
+  - Manual launching
+
+::right::
+
+![](ray-cluster.png)
+
+Source: [https://docs.ray.io/en/latest/cluster/key-concepts.html]
 
 ---
 
@@ -452,113 +565,179 @@ results = ray.get(futures)
 - Ray uses a shared-memory object store called Plasma.
 - Dask primarily stores data in memory and schedules tasks close to data.
   - Dask can also use distributed storage like HDFS, S3, or GCS.
+- Both Ray and Dask can explicitly send and persist data on workers.
+  - `scatter` or `persist` in Dask `Client`.
+  - `put` in Ray.
+  - References to data can be used as arguments to tasks.
 
 ---
 
-# Explicitly sending data to workers
+# Example with Ray put
 
-- Dask:
+1. Persist some data on workers:
 ```python
-future = client.scatter(data)
+data_ref = ray.put(np.random.sample((1000, 1000)))
 ```
-  - or for a Dask collection:
+2. Use the reference in a task:
 ```python
-dask_array = dask.array.from_array(np.random.random((1000, 1000)))
-persisted_array = client.persist(dask_array)
-```
-  - `persisted_array` is a Dask collection, not a `Future`.
-- Ray:
-```python
-data_id = ray.put(data)
+@ray.remote
+def process_data(data):
+    return np.linalg.norm(data)
+
+result_ref = process_data.remote(data_ref)
 ```
 
-- The data references can be used directly in tasks:
-```python
-future = client.submit(np.mean, data_id)  # Dask
-result_id = ray.remote(lambda x: np.mean(x)).remote(data_id)  # Ray
-```
+- No communication happens in step 2.
+- The task is likely scheduled on a worker with the data.
 
 ---
 
-# A non-obvious random numbers stale state
+# Task dependencies - call graphs
 
+- Imagine a simple case of two dependent tasks:
 ```python
-list(executor.map(np.random.randint, 8*[100]))
-[51, 51, 51, 51, 51, 51, 51, 51]
+data = load_data()
+result = process_data(data)
 ```
-Surprisingly, random generator state is shared and not mutated.
 
-💡 `randint` is not a (pure) function, it's a `RandomState` instance's method.
+- Passing references (`Future`'s) directly would not work with a `concurrent.futures` executor:
+```
+data_ref = executor.submit(load_data)
+result = executor.submit(process_data, data_ref)
+```
 
-Works with Ray though "out of the box"
+- Raises a `TypeError` as `process_data` expects data, not a `Future` (which cannot be pickled).
+
+- **Sending futures / references as task argument works directly using Dask or Ray.**
+  - It's a very powerful feature for building complex task graphs.
+  - The data persistence described above is in fact just a special case of this feature.
+
+---
+
+# Nested tasks - avoiding locking
+
+- Tasks in Dask and Ray can submit other tasks.
+- There are specific solutions in both [Dask](https://distributed.dask.org/en/stable/task-launch.html) and [Ray](https://docs.ray.io/en/latest/ray-core/tasks/nested-tasks.html) for avoiding dead-locking.
+  - Can happen when a task submits another task but scheduler does not have any free worker slots.
+- Dask provides a context manager for nested tasks:
 ```python
-def randint(n):
-    return np.random.randint(n)
+def fib(n):
+    if n < 2:
+        return n
+    with dask.distributed.worker_client() as client:
+        a_future = client.submit(fib, n - 1)
+        b_future = client.submit(fib, n - 2)
+        a, b = client.gather([a_future, b_future])
+    return a + b
+```
 
-ray.get([ray.remote(randint).remote(100) for i in range(10)])
-[34, 62, 4, 7, 26, 69, 43, 15, 60, 46]
+- Ray releases the lock on `ray.get`:
+```python
+@ray.remote(num_cpus=1, num_gpus=1)
+def g():
+    return ray.get(f.remote())
 ```
 
 ---
 
 # Resource requests for task execution
 
-- tasks can request resources, e.g. CPU, GPU, memory
+- Resource management is crucial in distributed computing.
+  - Not available in `concurrent.futures`.
+- Both Dask and Ray support requesting resources for tasks.
+  - Resources can be CPU, GPU, memory, or custom (abstract) resources.
+- Resource requests *do not* impose limits on actual physical resource usage.
+  - Scheduler uses requests for admission control and efficient scheduling.
+  - It's up to the task to not use more resources than requested.
+- CPU and memory are two fundamentally different types of resources:
+  - CPU: Can be "shared" (throttled) ➡️ cannot "run out of CPU".
+  - Memory: Finite capacity ➡️ can run out of memory ➡️ process OOM kill.
 
-> By default, Ray does not take into account the potential memory usage of a task or actor when scheduling. This is simply because it cannot estimate ahead of time how much memory is required. However, if you know how much memory a task or actor requires, you can specify it in the resource requirements of its ray.remote decorator to enable memory-aware scheduling:
+---
+layout: two-cols
+---
 
-Important
+# Resource requests in Ray
 
-Specifying a memory requirement does NOT impose any limits on memory usage. The requirements are used for admission control during scheduling only (similar to how CPU scheduling works in Ray). It is up to the task itself to not use more memory than it requested.
+- Ray natively supports and manages CPU, GPU and memory resources.
+  - Custom resources can be defined.
+- By default, Ray does not take into account the potential resource usage.
+- You can provide default requests and / or overrides for specific tasks.
+  - This means you can adjust based on runtime information.
+
+::right::
 
 ```python
+# default request defined here
+@ray.remote(num_cpus=2, memory=1024*1024*1024)
+def process(file_name):
+    ...
+
 result_refs = []
-for i in range(NUM_FILES):
-    # Now each task will use 2G memory resource
-    # and the number of concurrently running tasks is limited to 8.
-    # In this case, setting num_cpus to 2 has the same effect.
+for file_name in files_to_process:
     result_refs.append(
-        process.options(memory=2 * 1024 * 1024 * 1024).remote(f"{i}.csv")
+        # override default request based on runtime information
+        process.options(
+            memory=get_memory_request(file_name)
+        ).remote(file_name)
     )
 ray.get(result_refs)
 ```
 
 ---
 
+# Resource requests in Dask
+
+- Dask treats all resources as custom - you can define any resource labels.
+- Resource requests are provided at runtime, similarly to Ray.
+
+```python
+futures = [client.submit(
+    process, file_name,
+    resources={"MEMORY": get_memory_request(file_name)}
+    )
+    for file_name in files_to_process
+]
+```
+
+Dask worker process need to define the resources, e.g.:
+```sh
+dask worker scheduler:8786 --resources "MEMORY=100e9 CPU=2"
+```
+
+---
+
 # Fault tolerance
 
-
-
----
-
-# Critical challenges in distributed computing
-
-- Communication
-  - Plasma object store in Ray
-  - Peer to peer data sharing in Dask
-  - Smart scheduling minimising data transfer
-- Scheduling and synchronisation
+- Software fails, hardware fails, networks fail, user (codes) fail.
+- Dask and Ray can recover from (some) failures.
+- Task can be retried automatically.
+  - With maximum number of retries explicitly specified.
 
 ---
 
-# Task dependencies - call graphs
+# Ray and Dask ecosystems
 
-Imagine a simple case of two dependent tasks:
-```python
-data = load_data()
-result = process_data(data)
-```
-This would not work with a `concurrent.futures` executor:
-```
-data = executor.submit(load_data)
-result = executor.submit(process_data, data)
-```
-This raises a `TypeError` as `process_data` expects data, not a `Future`, which cannot be pickled.
-
-This works using Dask or Ray though.
 
 ---
-
-# Nested tasks - avoiding locking
-
+layout: two-cols
 ---
+
+# Advantages of Dask, Ray or similar
+
+- Efficient data storage and communication.
+- Resource management.
+- Powerful scheduling and synchronisation.
+- Support for task dependencies (graphs) and nested tasks.
+- Resilience and fault tolerance.
+- Scales from single machine to a cluster.
+- Rich integration ecosystem.
+
+::right::
+
+# Challenges
+- Communication overhead
+- Consistent software environments
+- Observability, logging
+- Authentication and authorisation
+- Costs monitoring and control
