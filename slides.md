@@ -89,13 +89,30 @@ layout: two-cols-header
   - Distributed systems: clusters, clouds (MIMD).
 
 ---
+layout: two-cols-header
+---
 
 # Where do you need concurrency and parallellism?
+
+::left::
+
 - Web servers
 - High-performance computing (HPC)
 - Data engineering
 - Machine learning
 - ... and many more
+
+::right::
+
+::v-click
+
+* Coffee serving analogy:
+  - Serving multiple customers at once vs
+  - Multiple machines to serve customers faster.
+
+![coffee](/concurrency_coffee.png){width=250px}
+
+::
 
 ---
 
@@ -707,7 +724,7 @@ ref = process_data.options(num_cpus=2, memory=1024*1024*1024).remote(data_ref)
 ---
 layout: default
 dragPos:
-  square: 642,341,150,150
+  square: 0,-7,0,0
 ---
 
 # Summary
