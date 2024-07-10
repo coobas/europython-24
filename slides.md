@@ -705,6 +705,10 @@ ref = process_data.options(num_cpus=2, memory=1024*1024*1024).remote(data_ref)
 - Dask and Ray can interoperate so you may not need to choose 😌
 
 ---
+layout: default
+dragPos:
+  square: 642,341,150,150
+---
 
 # Summary
 
@@ -716,3 +720,8 @@ ref = process_data.options(num_cpus=2, memory=1024*1024*1024).remote(data_ref)
   * Improve pickling, data communication, task dependencies, resilience, resource management, and more.
   * Scale from single machine to large clusters.
   * Integrate well with `asyncio`.
+
+
+* Slides available at [https://github.com/coobas/europython-24].
+
+<img v-drag="'square'" src="/qrcode.png" width=150px>
