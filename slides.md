@@ -19,20 +19,36 @@ transition: slide-left
 mdc: true
 
 layout: cover
----
-
-# From built-in concurrency primitives to large scale distributed computing
-## Jakub Urban *@ Flyr for Hospitality*
-
-<!--
-Introduction
--->
 
 ---
-layout: two-cols
+
+# [From built-in concurrency primitives to large scale distributed computing]{style="color:#9F0162"}
+## Jakub Urban *[@ Flyr for Hospitality]{style="color:#4D4DF4"}*
+
+---
+layout: center
+---
+
+# Content
+
+1. Introduction to concurrency and parallelism
+2. Python's built-in concurrency primitives
+3. Scaling out: Distributed computing with Dask and Ray
+
+---
+layout: section
+---
+
+# [1. Introduction to concurrency and parallelism]{style="color:#9F0162"}
+
+
+---
+layout: two-cols-header
 ---
 
 # Concurrency lets you wait efficiently
+
+::left::
 
 - Concurrency enables you doing other things while waiting for results or other resources.
   - For example, you can wait for multiple calculations or API responds.
@@ -89,6 +105,11 @@ layout: two-cols
   - We need processes to be responsive → concurrency.
   - We need to execute processing tasks fast and efficiently → parallelism.
 
+---
+layout: section
+---
+
+# [2. Python's built-in concurrency primitives]{style="color:#9F0162"}
 
 ---
 
@@ -265,7 +286,7 @@ with ThreadPoolExecutor(max_workers=4) as executor:
 # Gotcha example: A non-obvious random numbers stale state
 
 ```python
-list(executor.map(np.random.randint, 8*[100]))
+list(process_executor.map(np.random.randint, 8*[100]))
 ```
 
 ```
@@ -356,6 +377,12 @@ executor = loky.get_reusable_executor(max_workers=4, timeout=2)
 - Must be careful with resource utilisation, in particular RAM.
 
 ---
+layout: section
+---
+
+# [3. Scaling out: Distributed computing with Dask and Ray]{style="color:#9F0162"}
+
+---
 
 # Scaling out: Distributed computing
 
@@ -388,7 +415,7 @@ executor = loky.get_reusable_executor(max_workers=4, timeout=2)
 - Data can (sometimes) be memory-mapped.
 - Large data can be processed in chunks.
   - This is where executors can help.
-- Large scale frameworks like Dask or Ray can help even when running on a single machine.
+- Frameworks like Dask or Ray can help even when running on a single machine.
 
 ---
 
@@ -490,7 +517,7 @@ future = ref.future()
 
 ---
 
-# Ray and Dask within `asyncio`
+# Both Ray and Dask integrate well with `asyncio`
 
 - Very conveniently, Ray's `ObjectRef` can be directly `await`ed:
 ```python
@@ -512,52 +539,41 @@ result = await future
 ```
 
 ---
-layout: two-cols
+layout: two-cols-header
 ---
 
-# Dask Cluster architecture
+# Dask and Ray Cluster architecture
 
-- Dask cluster consists of
-  - Scheduler
-  - Workers
-- `Client(...)` either starts a local cluster or connects to an existing one.
-- Dashboard is available (default at [http://localhost:8787]).
-- Available resource managers enable powerful deployment and scaling options.
-  - Kubernetes: Dask Operator is most powerful
-  - Cloud: e.g. Coiled (managed SaaS)
-  - High Performance Computing job queues
-  - manual launching, e.g. via ssh
+::left::
+
+- Dask and Rays clusters basically consists of
+  - scheduler
+  - workers
+- Dashboard is available for observability.
+- Deployment options scales from local use to large scale infrastructures like
+  - Kubernetes (using operators)
+  - Cloud, including managed SaaS solutions
+  - High Performance Computing job queues (PBS, Slurm, ...)
 
 ::right::
 
-![dask-cluster-manager](dask-cluster-manager.png)
-
-
----
-layout: two-cols
----
-
-# Ray cluster architecture
-
-- Ray top level architecture is similar to Dask.
-  - Head node acts as global scheduler.
-  - Raylets help with node processes management.
-- Dashboard available at [http://localhost:8265].
-- Powerful deployment and scaling options:
-  - Kubernetes (KubeRay operator)
-  - Cloud: AWS or GCP via `ray up` command with a simple config file
-  - SaaS: Anyscale
-  - Manual launching
-
-::right::
-
-![](ray-cluster.png)
-
-Source: [https://docs.ray.io/en/latest/cluster/key-concepts.html]
+```mermaid
+graph TD;
+    subgraph Cluster
+        direction TB;
+        Scheduler[Scheduler]
+        Worker1[Worker 1]
+        Worker2[Worker 2]
+        Worker3[Worker 3]
+        Scheduler --> Worker1
+        Scheduler --> Worker2
+        Scheduler --> Worker3
+    end
+```
 
 ---
 
-# Data management and communication
+# Dask and Ray manage distributed data
 
 - With `concurrent.futures`, data is pickled and sent to workers.
   - This means data has to pass from / to the orchestrator.
@@ -568,7 +584,7 @@ Source: [https://docs.ray.io/en/latest/cluster/key-concepts.html]
 - Both Ray and Dask can explicitly send and persist data on workers.
   - `scatter` or `persist` in Dask `Client`.
   - `put` in Ray.
-  - References to data can be used as arguments to tasks.
+- *References to data can be used as arguments to tasks*.
 
 ---
 
@@ -652,57 +668,9 @@ def g():
 - CPU and memory are two fundamentally different types of resources:
   - CPU: Can be "shared" (throttled) ➡️ cannot "run out of CPU".
   - Memory: Finite capacity ➡️ can run out of memory ➡️ process OOM kill.
-
----
-layout: two-cols
----
-
-# Resource requests in Ray
-
-- Ray natively supports and manages CPU, GPU and memory resources.
-  - Custom resources can be defined.
-- By default, Ray does not take into account the potential resource usage.
-- You can provide default requests and / or overrides for specific tasks.
-  - This means you can adjust based on runtime information.
-
-::right::
-
+- A Ray example:
 ```python
-# default request defined here
-@ray.remote(num_cpus=2, memory=1024*1024*1024)
-def process(file_name):
-    ...
-
-result_refs = []
-for file_name in files_to_process:
-    result_refs.append(
-        # override default request based on runtime information
-        process.options(
-            memory=get_memory_request(file_name)
-        ).remote(file_name)
-    )
-ray.get(result_refs)
-```
-
----
-
-# Resource requests in Dask
-
-- Dask treats all resources as custom - you can define any resource labels.
-- Resource requests are provided at runtime, similarly to Ray.
-
-```python
-futures = [client.submit(
-    process, file_name,
-    resources={"MEMORY": get_memory_request(file_name)}
-    )
-    for file_name in files_to_process
-]
-```
-
-Dask worker process need to define the resources, e.g.:
-```sh
-dask worker scheduler:8786 --resources "MEMORY=100e9 CPU=2"
+ref = process_data.options(num_cpus=2, memory=1024*1024*1024).remote(data_ref)
 ```
 
 ---
@@ -711,33 +679,40 @@ dask worker scheduler:8786 --resources "MEMORY=100e9 CPU=2"
 
 - Software fails, hardware fails, networks fail, user (codes) fail.
 - Dask and Ray can recover from (some) failures.
-- Task can be retried automatically.
+- Tasks can be retried automatically.
   - With maximum number of retries explicitly specified.
 
 ---
 
-# Ray and Dask ecosystems
+# Main challenges in distributed computing with Dask and Ray
 
-
----
-layout: two-cols
----
-
-# Advantages of Dask, Ray or similar
-
-- Efficient data storage and communication.
-- Resource management.
-- Powerful scheduling and synchronisation.
-- Support for task dependencies (graphs) and nested tasks.
-- Resilience and fault tolerance.
-- Scales from single machine to a cluster.
-- Rich integration ecosystem.
-
-::right::
-
-# Challenges
 - Communication overhead
-- Consistent software environments
+- Consistent software environments (Python packages)
 - Observability, logging
 - Authentication and authorisation
 - Costs monitoring and control
+
+---
+
+# Choose between Dask and Ray?
+
+- Architecture and features for asynchronous computing are very similar.
+  - There are implementation differences we have not covered.
+- The choice is more likely to be made by other features, or ecosystems.
+  - Dask provides a pandas-like API for data processing.
+  - Ray focuses more on ML end-to-end workflows.
+  - Integrations with other frameworks differ so you may pick the one that fits your stack.
+- Dask and Ray can interoperate so you may not need to choose 😌
+
+---
+
+# Summary
+
+* Python provides powerful built-in concurrency abstraction and implementation.
+  * `concurrent.futures` is a high-level interface for asynchronous execution.
+  * `Executor` and `Future` are the main abstractions that other frameworks build upon.
+  * can be seamlessly employed within `asyncio`
+* Dask, Ray and similar provide enhanced features and scaling to distributed computing.
+  * Improve pickling, data communication, task dependencies, resilience, resource management, and more.
+  * Scale from single machine to large clusters.
+  * Integrate well with `asyncio`.
